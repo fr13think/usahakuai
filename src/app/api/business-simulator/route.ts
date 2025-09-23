@@ -1,0 +1,682 @@
+import { NextRequest, NextResponse } from 'next/server';
+import Groq from 'groq-sdk';
+import { createServerClient } from '@/lib/supabase/server';
+import type { Json } from '@/lib/supabase/database.types';
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+});
+
+interface BusinessMetrics {
+  revenue: number;
+  expenses: number;
+  profit: number;
+  marketShare: number;
+  customerSatisfaction: number;
+  employeeMotivation: number;
+  riskLevel: number;
+}
+
+interface ScenarioChoice {
+  id: string;
+  text: string;
+  description: string;
+  cost: number;
+  expectedOutcome: {
+    revenue: number;
+    expenses: number;
+    marketShare: number;
+    customerSatisfaction: number;
+    employeeMotivation: number;
+    riskLevel: number;
+  };
+}
+
+interface ScenarioEvent {
+  id: string;
+  title: string;
+  description: string;
+  type: 'market' | 'competitor' | 'economic' | 'internal';
+  impact: 'high' | 'medium' | 'low';
+  choices: ScenarioChoice[];
+}
+
+interface SimulationState {
+  id?: string;
+  quarter: number;
+  year: number;
+  cash: number;
+  metrics: BusinessMetrics;
+  history: BusinessMetrics[];
+  currentEvent: ScenarioEvent | null;
+  isRunning: boolean;
+  gameOver: boolean;
+  score: number;
+  businessType: string;
+}
+
+// Generate random number for variability
+function randomBetween(min: number, max: number): number {
+  return Math.random() * (max - min) + min;
+}
+
+// Calculate business score based on multiple factors
+function calculateScore(simulation: SimulationState): number {
+  const baseScore = simulation.quarter * 100;
+  const profitBonus = Math.max(0, simulation.metrics.profit) * 0.1;
+  const marketShareBonus = simulation.metrics.marketShare * 10;
+  const satisfactionBonus = simulation.metrics.customerSatisfaction * 5;
+  const riskPenalty = simulation.metrics.riskLevel * 2;
+  
+  return Math.round(baseScore + profitBonus + marketShareBonus + satisfactionBonus - riskPenalty);
+}
+
+// Define market data type
+interface MarketData {
+  metrics?: {
+    inflation?: number;
+    usdIdr?: number;
+  };
+}
+
+// Define financial summary structure
+interface FinancialSummaryData {
+  totalIncome?: number;
+  totalExpense?: number;
+  netProfit?: number;
+  transactionCount?: number;
+}
+
+// Generate initial business metrics based on business type and market conditions
+async function generateInitialMetrics(businessType: string, supabase?: Awaited<ReturnType<typeof createServerClient>>): Promise<BusinessMetrics> {
+  // Try to get market intelligence and financial data for more realistic metrics
+  let marketData = null;
+  let financialData = null;
+  
+  if (supabase) {
+    try {
+      // Get market intelligence data
+      const { data: market } = await supabase
+        .from('market_intelligence')
+        .select('metrics, insights')
+        .eq('industry', businessType)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      marketData = market;
+    } catch {
+      // Ignore if no market data exists
+    }
+
+    try {
+      // Get recent financial analysis for industry benchmarks
+      const { data: financial } = await supabase
+        .from('financial_analyses')
+        .select('summary')
+        .order('created_at', { ascending: false })
+        .limit(3);
+      financialData = financial;
+    } catch {
+      // Ignore if no financial data exists
+    }
+  }
+
+  // Base profiles with Indonesian market considerations - more optimized for better profit margins
+  const baseProfiles = {
+    'Kedai Kopi': {
+      revenue: randomBetween(18000000, 30000000), // IDR monthly - increased
+      expenses: randomBetween(12000000, 20000000), // Better profit margin
+      marketShare: randomBetween(3, 10),
+      customerSatisfaction: randomBetween(75, 90), // Higher starting satisfaction
+      employeeMotivation: randomBetween(70, 85),
+      riskLevel: randomBetween(15, 35) // Lower initial risk
+    },
+    'Startup Teknologi': {
+      revenue: randomBetween(8000000, 18000000), // Increased from 5-15M
+      expenses: randomBetween(6000000, 14000000), // Better ratio - reduced from 8-20M
+      marketShare: randomBetween(1, 4),
+      customerSatisfaction: randomBetween(65, 80),
+      employeeMotivation: randomBetween(75, 90),
+      riskLevel: randomBetween(45, 70) // Reduced from 60-80
+    },
+    'Toko Online': {
+      revenue: randomBetween(25000000, 45000000), // Increased from 20-40M
+      expenses: randomBetween(15000000, 30000000), // Better margin
+      marketShare: randomBetween(2, 7),
+      customerSatisfaction: randomBetween(70, 85),
+      employeeMotivation: randomBetween(65, 80),
+      riskLevel: randomBetween(25, 45) // Reduced from 30-50
+    },
+    'default': {
+      revenue: randomBetween(15000000, 35000000), // Increased from 10-30M
+      expenses: randomBetween(10000000, 25000000), // Better ratio
+      marketShare: randomBetween(2, 8),
+      customerSatisfaction: randomBetween(70, 85), // Higher baseline
+      employeeMotivation: randomBetween(70, 85),
+      riskLevel: randomBetween(25, 50) // Lower initial risk
+    }
+  };
+
+  let profile = baseProfiles[businessType as keyof typeof baseProfiles] || baseProfiles.default;
+
+  // Adjust metrics based on market intelligence and financial data if available
+  if (marketData && typeof marketData === 'object' && 'metrics' in marketData) {
+    const marketMetrics = (marketData as MarketData).metrics;
+    const economicFactor = marketMetrics?.inflation ? (1 - Math.abs(marketMetrics.inflation) / 200) : 1;
+    const exchangeFactor = marketMetrics?.usdIdr ? Math.min(1.2, Math.max(0.8, 15000 / marketMetrics.usdIdr)) : 1;
+    
+    // Adjust revenue based on economic conditions
+    profile = {
+      ...profile,
+      revenue: profile.revenue * economicFactor * exchangeFactor,
+      expenses: profile.expenses * economicFactor,
+      riskLevel: profile.riskLevel * ((marketMetrics?.inflation || 0) > 5 ? 1.2 : 0.9)
+    };
+  }
+
+  // Further adjust based on recent financial analysis patterns
+  if (financialData && Array.isArray(financialData) && financialData.length > 0) {
+    let avgProfitMargin = 0;
+    let validAnalyses = 0;
+    
+    financialData.forEach((analysis: { summary: Json }) => {
+      // Type guard to check if summary is an object with the expected structure
+      if (
+        analysis.summary &&
+        typeof analysis.summary === 'object' &&
+        analysis.summary !== null &&
+        !Array.isArray(analysis.summary)
+      ) {
+        const summary = analysis.summary as FinancialSummaryData;
+        const totalIncome = summary.totalIncome || 0;
+        const netProfit = summary.netProfit || 0;
+        
+        if (totalIncome > 0) {
+          // Calculate profit margin as (netProfit / totalIncome) * 100
+          const profitMargin = (netProfit / totalIncome) * 100;
+          if (profitMargin > 0) {
+            avgProfitMargin += profitMargin;
+            validAnalyses++;
+          }
+        }
+      }
+    });
+    
+    if (validAnalyses > 0) {
+      avgProfitMargin = avgProfitMargin / validAnalyses;
+      // Adjust expenses based on industry average profit margin
+      const targetMargin = avgProfitMargin / 100;
+      profile.expenses = profile.revenue * (1 - targetMargin);
+    }
+  }
+  
+  return {
+    revenue: Math.round(profile.revenue * 100) / 100,
+    expenses: Math.round(profile.expenses * 100) / 100,
+    profit: Math.round((profile.revenue - profile.expenses) * 100) / 100,
+    marketShare: Math.round(profile.marketShare * 100) / 100,
+    customerSatisfaction: Math.round(profile.customerSatisfaction * 100) / 100,
+    employeeMotivation: Math.round(profile.employeeMotivation * 100) / 100,
+    riskLevel: Math.round(profile.riskLevel * 100) / 100
+  };
+}
+
+// Generate dynamic scenario event using Llama Groq
+async function generateScenarioEvent(
+  businessType: string, 
+  currentMetrics: BusinessMetrics, 
+  quarter: number
+): Promise<ScenarioEvent | null> {
+  try {
+    // Only generate events every 3-4 quarters to give business time to grow
+    if (Math.random() > 0.25) return null;
+
+    const scenarioPrompt = `
+Buat skenario bisnis yang realistis untuk bisnis ${businessType} di Kuartal ${quarter} dalam konteks Indonesia.
+
+KONDISI BISNIS SAAT INI:
+- Pendapatan: Rp ${currentMetrics.revenue.toLocaleString('id-ID')}
+- Pangsa Pasar: ${currentMetrics.marketShare.toFixed(2)}%
+- Kepuasan Pelanggan: ${currentMetrics.customerSatisfaction.toFixed(2)}%
+- Motivasi Karyawan: ${currentMetrics.employeeMotivation.toFixed(2)}%
+- Tingkat Risiko: ${currentMetrics.riskLevel.toFixed(2)}%
+
+Buat skenario JSON dengan struktur yang tepat seperti ini:
+{
+  "id": "skenario-unik-id",
+  "title": "Judul Skenario dalam Bahasa Indonesia",
+  "description": "Deskripsi skenario yang detail dalam bahasa Indonesia (2-3 kalimat)",
+  "type": "market|competitor|economic|internal",
+  "impact": "high|medium|low",
+  "choices": [
+    {
+      "id": "pilihan-1",
+      "text": "Judul pilihan dalam bahasa Indonesia",
+      "description": "Penjelasan pilihan dalam bahasa Indonesia",
+      "cost": 5000000,
+      "expectedOutcome": {
+        "revenue": 2000000,
+        "expenses": 1000000,
+        "marketShare": 0.5,
+        "customerSatisfaction": 5,
+        "employeeMotivation": -2,
+        "riskLevel": 3
+      }
+    },
+    {
+      "id": "pilihan-2", 
+      "text": "Pilihan alternatif dalam bahasa Indonesia",
+      "description": "Pendekatan alternatif dalam bahasa Indonesia",
+      "cost": 0,
+      "expectedOutcome": {
+        "revenue": -1000000,
+        "expenses": 0,
+        "marketShare": -0.2,
+        "customerSatisfaction": -3,
+        "employeeMotivation": 0,
+        "riskLevel": -5
+      }
+    },
+    {
+      "id": "pilihan-3",
+      "text": "Pilihan konservatif dalam bahasa Indonesia",
+      "description": "Aman tetapi dampak terbatas dalam bahasa Indonesia",
+      "cost": 2000000,
+      "expectedOutcome": {
+        "revenue": 500000,
+        "expenses": 500000,
+        "marketShare": 0.1,
+        "customerSatisfaction": 2,
+        "employeeMotivation": 1,
+        "riskLevel": 1
+      }
+    }
+  ]
+}
+
+Persyaratan:
+1. Skenario harus realistis untuk ${businessType} di Indonesia
+2. Sertakan 3 pendekatan pilihan berbeda (agresif, konservatif, reaktif)
+3. Biaya harus masuk akal (0 hingga 20% dari pendapatan saat ini)
+4. PENTING: Hasil harus seimbang dan memberikan peluang positif - minimal 2 pilihan harus memberikan dampak positif untuk revenue/profit
+5. Pilihan agresif: Biaya tinggi, potensi untung besar, risiko sedang
+6. Pilihan konservatif: Biaya rendah, keuntungan moderat tapi stabil, risiko rendah
+7. Pilihan reaktif: Biaya minimal/gratis, dampak kecil atau netral
+8. Gunakan konteks dan kondisi pasar Indonesia yang optimis untuk pertumbuhan UKM
+9. Semua teks dalam bahasa Indonesia yang natural dan mudah dipahami
+10. Pastikan skenario mendukung pertumbuhan bisnis, bukan hanya tantangan`;
+
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content: "Anda adalah ahli simulasi bisnis untuk UKM Indonesia. Buat skenario bisnis yang realistis dan seimbang dalam bahasa Indonesia. Output harus berupa JSON yang valid."
+        },
+        {
+          role: "user",
+          content: scenarioPrompt
+        }
+      ],
+      temperature: 0.8,
+      max_tokens: 2000,
+    });
+
+    const responseText = completion.choices[0]?.message?.content || '';
+    
+    // Parse JSON response
+    try {
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      const scenario = JSON.parse(jsonMatch?.[0] || responseText);
+      
+      // Validate scenario structure
+      if (scenario.id && scenario.title && scenario.choices && Array.isArray(scenario.choices)) {
+        // Ensure at least 2 choices have positive revenue impact
+        let positiveChoices = 0;
+        scenario.choices.forEach((choice: ScenarioChoice) => {
+          if (choice.expectedOutcome.revenue > 0) {
+            positiveChoices++;
+          }
+        });
+        
+        // If not enough positive choices, adjust the outcomes to be more balanced
+        if (positiveChoices < 2) {
+          scenario.choices.forEach((choice: ScenarioChoice, index: number) => {
+            if (index < 2) { // Make first two choices positive
+              choice.expectedOutcome.revenue = Math.max(choice.expectedOutcome.revenue, randomBetween(500000, 3000000));
+              choice.expectedOutcome.marketShare = Math.max(choice.expectedOutcome.marketShare, 0.1);
+              choice.expectedOutcome.customerSatisfaction = Math.max(choice.expectedOutcome.customerSatisfaction, 1);
+            }
+          });
+        }
+        
+        return scenario;
+      }
+    } catch (e) {
+      console.error('Failed to parse scenario JSON:', e);
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error generating scenario:', error);
+    return null;
+  }
+}
+
+// Apply choice effects to metrics
+function applyChoiceEffects(
+  currentMetrics: BusinessMetrics,
+  choice: ScenarioChoice,
+  randomVariability = 0.2
+): BusinessMetrics {
+  const outcome = choice.expectedOutcome;
+  const variability = (1 - randomVariability) + (Math.random() * randomVariability * 2);
+  
+  return {
+    revenue: Math.max(0, Math.round((currentMetrics.revenue + (outcome.revenue * variability)) * 100) / 100),
+    expenses: Math.max(0, Math.round((currentMetrics.expenses + (outcome.expenses * variability)) * 100) / 100),
+    profit: 0, // Will be calculated
+    marketShare: Math.max(0, Math.min(100, Math.round((currentMetrics.marketShare + (outcome.marketShare * variability)) * 100) / 100)),
+    customerSatisfaction: Math.max(0, Math.min(100, Math.round((currentMetrics.customerSatisfaction + (outcome.customerSatisfaction * variability)) * 100) / 100)),
+    employeeMotivation: Math.max(0, Math.min(100, Math.round((currentMetrics.employeeMotivation + (outcome.employeeMotivation * variability)) * 100) / 100)),
+    riskLevel: Math.max(0, Math.min(100, Math.round((currentMetrics.riskLevel + (outcome.riskLevel * variability)) * 100) / 100))
+  };
+}
+
+// Apply quarterly business changes with more balanced and realistic approach
+function applyQuarterlyChanges(metrics: BusinessMetrics, quarter: number = 1): BusinessMetrics {
+  // Realistic seasonal patterns for Indonesian market
+  const seasonalFactors = {
+    1: 1.05,  // Q1: Post-holiday recovery
+    2: 1.08,  // Q2: Economic activity increases
+    3: 1.12,  // Q3: Mid-year peak
+    4: 1.15   // Q4: Holiday season boost
+  };
+  
+  const currentQuarter = ((quarter - 1) % 4) + 1;
+  const seasonality = seasonalFactors[currentQuarter as keyof typeof seasonalFactors] || 1.05;
+  
+  // More balanced market growth (Indonesian economy ~5% annually = 1.25% quarterly)
+  const baseGrowth = 0.0125; // 1.25% base quarterly growth
+  const marketVariation = randomBetween(-0.03, 0.07); // -3% to +7% variation
+  const marketGrowth = baseGrowth + marketVariation;
+  
+  // More realistic competitive pressure
+  const competition = randomBetween(-0.015, 0.015); // -1.5% to +1.5%
+  
+  // Revenue calculation with seasonal boost
+  const revenueGrowthFactor = (1 + marketGrowth) * (seasonality * 0.02 + 0.98);
+  
+  // Expenses grow more moderately and sometimes decrease due to efficiency
+  const expenseEfficiency = randomBetween(-0.05, 0.06); // Can improve efficiency or face cost increases
+  const expenseChange = 1 + expenseEfficiency;
+  
+  const newMetrics = {
+    revenue: Math.round((metrics.revenue * revenueGrowthFactor) * 100) / 100,
+    expenses: Math.round((metrics.expenses * expenseChange) * 100) / 100,
+    profit: 0, // Will be calculated
+    marketShare: Math.max(0.1, Math.min(50, Math.round((metrics.marketShare + competition) * 100) / 100)),
+    
+    // Customer satisfaction: tends to be stable with small variations
+    customerSatisfaction: Math.max(30, Math.min(100, Math.round((metrics.customerSatisfaction + randomBetween(-2, 4)) * 100) / 100)),
+    
+    // Employee motivation: generally stable, can improve with good performance
+    employeeMotivation: Math.max(30, Math.min(100, Math.round((metrics.employeeMotivation + randomBetween(-1.5, 3)) * 100) / 100)),
+    
+    // Risk level: more balanced, can decrease with good management
+    riskLevel: Math.max(5, Math.min(95, Math.round((metrics.riskLevel + randomBetween(-4, 2)) * 100) / 100))
+  };
+  
+  newMetrics.profit = Math.round((newMetrics.revenue - newMetrics.expenses) * 100) / 100;
+  
+  // Bonus adjustments for good performance
+  if (newMetrics.profit > metrics.profit * 1.1) {
+    // Good profit performance boosts other metrics
+    newMetrics.customerSatisfaction = Math.min(100, newMetrics.customerSatisfaction + 2);
+    newMetrics.employeeMotivation = Math.min(100, newMetrics.employeeMotivation + 1.5);
+    newMetrics.riskLevel = Math.max(5, newMetrics.riskLevel - 1);
+  }
+  
+  return newMetrics;
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { action, businessType, simulationState, choiceId } = await request.json();
+
+    switch (action) {
+      case 'initialize': {
+        if (!businessType) {
+          return NextResponse.json({ error: 'Business type required' }, { status: 400 });
+        }
+
+        // Generate initial business metrics
+        const initialMetrics = await generateInitialMetrics(businessType, supabase);
+        
+        const simulation: SimulationState = {
+          quarter: 1,
+          year: 2025,
+          cash: 100000000, // Starting cash in IDR (100 million)
+          metrics: initialMetrics,
+          history: [initialMetrics],
+          currentEvent: null,
+          isRunning: true,
+          gameOver: false,
+          score: 0,
+          businessType
+        };
+
+        simulation.score = calculateScore(simulation);
+
+        // Save to database
+        const { data: savedSimulation, error } = await supabase
+          .from('business_simulations')
+          .insert({
+            user_id: user.id,
+            business_type: businessType,
+            quarter: simulation.quarter,
+            year: simulation.year,
+            cash: simulation.cash,
+            score: simulation.score,
+            current_metrics: simulation.metrics as unknown as Json,
+            metrics_history: simulation.history as unknown as Json,
+            current_event: simulation.currentEvent as unknown as Json,
+            is_running: simulation.isRunning,
+            game_over: simulation.gameOver
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Database error:', error);
+          return NextResponse.json({ error: 'Failed to save simulation' }, { status: 500 });
+        }
+
+        simulation.id = savedSimulation.id;
+
+        // Generate first scenario event
+        const firstEvent = await generateScenarioEvent(businessType, initialMetrics, 1);
+        if (firstEvent) {
+          simulation.currentEvent = firstEvent;
+          
+          // Update with first event
+          await supabase
+            .from('business_simulations')
+            .update({ current_event: firstEvent as unknown as Json })
+            .eq('id', savedSimulation.id);
+        }
+
+        return NextResponse.json(simulation);
+      }
+
+      case 'decision': {
+        if (!simulationState || !choiceId) {
+          return NextResponse.json({ error: 'Simulation state and choice required' }, { status: 400 });
+        }
+
+        const sim: SimulationState = simulationState;
+        
+        if (!sim.currentEvent || sim.gameOver) {
+          return NextResponse.json({ error: 'No active event or game over' }, { status: 400 });
+        }
+
+        // Find the chosen option
+        const choice = sim.currentEvent.choices.find(c => c.id === choiceId);
+        if (!choice) {
+          return NextResponse.json({ error: 'Invalid choice' }, { status: 400 });
+        }
+
+        // Check if user has enough cash
+        if (sim.cash < choice.cost) {
+          return NextResponse.json({ error: 'Insufficient cash' }, { status: 400 });
+        }
+
+        // Apply choice effects
+        const oldMetrics = { ...sim.metrics };
+        const eventTitle = sim.currentEvent.title; // Store before clearing
+        sim.cash -= choice.cost;
+        sim.metrics = applyChoiceEffects(sim.metrics, choice);
+        sim.metrics.profit = Math.round((sim.metrics.revenue - sim.metrics.expenses) * 100) / 100;
+        sim.currentEvent = null; // Clear current event
+
+        // Update cash flow
+        sim.cash += sim.metrics.profit;
+
+        // Check for game over conditions
+        if (sim.cash < -50000000 || sim.metrics.customerSatisfaction < 20) { // -50 million IDR
+          sim.gameOver = true;
+          sim.isRunning = false;
+        }
+
+        // Calculate new score
+        sim.score = calculateScore(sim);
+
+        // Log the decision
+        if (sim.id) {
+          await supabase.from('simulation_events_log').insert({
+            simulation_id: sim.id,
+            user_id: user.id,
+            quarter: sim.quarter,
+            event_type: 'decision',
+            event_data: { eventTitle, choiceId, choiceText: choice.text } as unknown as Json,
+            choice_made: choice.text,
+            choice_cost: choice.cost,
+            metrics_before: oldMetrics as unknown as Json,
+            metrics_after: sim.metrics as unknown as Json
+          });
+        }
+
+        // Update database
+        if (sim.id) {
+          await supabase
+            .from('business_simulations')
+            .update({
+              cash: sim.cash,
+              score: sim.score,
+              current_metrics: sim.metrics as unknown as Json,
+              current_event: sim.currentEvent as unknown as Json,
+              game_over: sim.gameOver,
+              is_running: sim.isRunning,
+              completed_at: sim.gameOver ? new Date().toISOString() : null
+            })
+            .eq('id', sim.id);
+        }
+
+        return NextResponse.json(sim);
+      }
+
+      case 'advance': {
+        if (!simulationState) {
+          return NextResponse.json({ error: 'Simulation state required' }, { status: 400 });
+        }
+
+        const sim: SimulationState = simulationState;
+        
+        if (sim.gameOver || sim.currentEvent) {
+          return NextResponse.json({ error: 'Cannot advance with active event or game over' }, { status: 400 });
+        }
+
+        // Advance to next quarter
+        sim.quarter += 1;
+        if (sim.quarter > 4) {
+          sim.quarter = 1;
+          sim.year += 1;
+        }
+
+        // Apply quarterly business changes with quarter context
+        const oldMetrics = { ...sim.metrics };
+        sim.metrics = applyQuarterlyChanges(sim.metrics, sim.quarter);
+        sim.cash += sim.metrics.profit;
+
+        // Add to history
+        sim.history.push({ ...sim.metrics });
+
+        // Check for game over
+        if (sim.cash < -50000000 || sim.quarter > 40) { // Max 10 years, -50 million IDR
+          sim.gameOver = true;
+          sim.isRunning = false;
+        }
+
+        // Calculate new score
+        sim.score = calculateScore(sim);
+
+        // Generate new scenario event
+        if (!sim.gameOver) {
+          const newEvent = await generateScenarioEvent(sim.businessType, sim.metrics, sim.quarter);
+          sim.currentEvent = newEvent;
+        }
+
+        // Log the time advance
+        if (sim.id) {
+          await supabase.from('simulation_events_log').insert({
+            simulation_id: sim.id,
+            user_id: user.id,
+            quarter: sim.quarter,
+            event_type: 'time_advance',
+            event_data: { from_quarter: sim.quarter - 1, to_quarter: sim.quarter } as unknown as Json,
+            metrics_before: oldMetrics as unknown as Json,
+            metrics_after: sim.metrics as unknown as Json
+          });
+        }
+
+        // Update database
+        if (sim.id) {
+          await supabase
+            .from('business_simulations')
+            .update({
+              quarter: sim.quarter,
+              year: sim.year,
+              cash: sim.cash,
+              score: sim.score,
+              current_metrics: sim.metrics as unknown as Json,
+              metrics_history: sim.history as unknown as Json,
+              current_event: sim.currentEvent as unknown as Json,
+              game_over: sim.gameOver,
+              is_running: sim.isRunning,
+              completed_at: sim.gameOver ? new Date().toISOString() : null
+            })
+            .eq('id', sim.id);
+        }
+
+        return NextResponse.json(sim);
+      }
+
+      default:
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
+
+  } catch (error) {
+    console.error('Business simulator error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

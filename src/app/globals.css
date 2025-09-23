@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Default theme - Dashboard (System) */
+  :root {
+    --background: 60 56% 91%;
+    --foreground: 27 29% 20%;
+    --card: 60 50% 95%;
+    --card-foreground: 27 29% 20%;
+    --popover: 60 50% 95%;
+    --popover-foreground: 27 29% 20%;
+    --primary: 38 100% 60%;
+    --primary-foreground: 27 29% 10%;
+    --secondary: 60 20% 85%;
+    --secondary-foreground: 27 29% 20%;
+    --muted: 60 20% 88%;
+    --muted-foreground: 27 29% 40%;
+    --accent: 27 29% 50%;
+    --accent-foreground: 60 56% 91%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 60 20% 80%;
+    --input: 60 20% 85%;
+    --ring: 38 100% 60%;
+    --chart-1: 38 100% 60%;
+    --chart-2: 27 29% 50%;
+    --chart-3: 38 80% 70%;
+    --chart-4: 27 40% 60%;
+    --chart-5: 38 60% 50%;
+    --radius: 0.5rem;
+
+    /* Sidebar specific colors */
+    --sidebar-background: 27 20% 25%;
+    --sidebar-foreground: 60 50% 95%;
+    --sidebar-primary: 38 100% 60%;
+    --sidebar-primary-foreground: 27 29% 10%;
+    --sidebar-accent: 27 20% 35%;
+    --sidebar-accent-foreground: 38 100% 60%;
+    --sidebar-border: 27 15% 30%;
+    --sidebar-ring: 38 100% 70%;
+  }
+
+  /* Light theme - Landing page style */
+  .light {
+    --background: 0 0% 100%; /* Pure white like landing page */
+    --foreground: 222.2 84% 4.9%; /* Dark gray for text */
+    --card: 0 0% 100%; /* Pure white cards */
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%; /* Blue primary like landing page */
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%; /* Light gray like landing page bg-gray-50 */
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%; /* bg-gray-50 equivalent */
+    --muted-foreground: 215.4 16.3% 46.9%; /* text-gray-600 equivalent */
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%; /* Light border like landing page */
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --chart-1: 221.2 83.2% 53.3%;
+    --chart-2: 212 95% 68%;
+    --chart-3: 216 95% 73%;
+    --chart-4: 210 95% 78%;
+    --chart-5: 224 95% 83%;
+
+    /* Sidebar specific colors for light theme */
+    --sidebar-background: 0 0% 100%; /* White sidebar */
+    --sidebar-foreground: 222.2 84% 4.9%;
+    --sidebar-primary: 221.2 83.2% 53.3%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 210 40% 96%;
+    --sidebar-accent-foreground: 221.2 83.2% 53.3%;
+    --sidebar-border: 214.3 31.8% 91.4%;
+    --sidebar-ring: 221.2 83.2% 53.3%;
+  }
+
+  .dark {
+    --background: 27 15% 10%;
+    --foreground: 60 50% 95%;
+    --card: 27 15% 15%;
+    --card-foreground: 60 50% 95%;
+    --popover: 27 15% 10%;
+    --popover-foreground: 60 50% 95%;
+    --primary: 38 100% 60%;
+    --primary-foreground: 27 29% 10%;
+    --secondary: 27 15% 20%;
+    --secondary-foreground: 60 50% 95%;
+    --muted: 27 15% 20%;
+    --muted-foreground: 60 20% 70%;
+    --accent: 38 100% 60%;
+    --accent-foreground: 27 29% 10%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 27 15% 25%;
+    --input: 27 15% 25%;
+    --ring: 38 100% 60%;
+    --chart-1: 38 100% 60%;
+    --chart-2: 27 29% 50%;
+    --chart-3: 38 80% 70%;
+    --chart-4: 27 40% 60%;
+    --chart-5: 38 60% 50%;
+
+    /* Sidebar specific colors */
+    --sidebar-background: 27 15% 10%;
+    --sidebar-foreground: 60 50% 95%;
+    --sidebar-primary: 38 100% 60%;
+    --sidebar-primary-foreground: 27 29% 10%;
+    --sidebar-accent: 27 15% 20%;
+    --sidebar-accent-foreground: 38 100% 60%;
+    --sidebar-border: 27 15% 25%;
+    --sidebar-ring: 38 100% 70%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

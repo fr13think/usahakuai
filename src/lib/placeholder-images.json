@@ -1,0 +1,28 @@
+{
+  "placeholderImages": [
+    {
+      "id": "learning1",
+      "description": "Abstract image of books on a shelf",
+      "imageUrl": "https://picsum.photos/seed/10/600/400",
+      "imageHint": "books business"
+    },
+    {
+      "id": "learning2",
+      "description": "Person wearing headphones",
+      "imageUrl": "https://picsum.photos/seed/11/600/400",
+      "imageHint": "headphones audio"
+    },
+    {
+      "id": "learning3",
+      "description": "A well-lit modern classroom",
+      "imageUrl": "https://picsum.photos/seed/12/600/400",
+      "imageHint": "learning classroom"
+    },
+    {
+      "id": "learning4",
+      "description": "A tidy desk setup for studying",
+      "imageUrl": "https://picsum.photos/seed/13/600/400",
+      "imageHint": "desk study"
+    }
+  ]
+}
